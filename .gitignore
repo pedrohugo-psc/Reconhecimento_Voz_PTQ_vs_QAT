@@ -1,0 +1,19 @@
+# Ambiente virtual
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Dataset (caso seja copiado localmente para testes)
+command_voice_tcc-export/
