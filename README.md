@@ -64,13 +64,7 @@ Coloque a pasta do dataset `command_voice_tcc-export` (contendo `training/` e `t
 
 ### 2. No Google Colab
 1. Abra diretamente pelo botão **Open in Colab** no topo deste README (ou em **Arquivo → Abrir notebook → GitHub → `pedrohugo-psc/Reconhecimento_Voz_PTQ_vs_QAT`**).
-2. Envie a pasta `command_voice_tcc-export` para a raiz do seu **Google Drive** (`MyDrive/command_voice_tcc-export`).
-3. Antes de rodar a célula de carregamento do dataset no Colab, adicione e execute uma célula com:
-   ```python
-   from google.colab import drive
-   drive.mount('/content/drive')
-   ```
-   O notebook detectará automaticamente o dataset em `/content/drive/MyDrive/command_voice_tcc-export`.
+2. Execute as células normalmente: quando o dataset não é encontrado localmente, a primeira célula de código já baixa e descompacta automaticamente o arquivo `.zip` público do Google Drive ([pasta compartilhada](https://drive.google.com/drive/folders/1IR5cVpoXbFzSOITMduxd21cEE9KS2Ftb?usp=sharing)) e garante o suporte do `torchaudio` no ambiente Colab.
 
 ---
 

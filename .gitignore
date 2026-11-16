@@ -15,5 +15,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Dataset (caso seja copiado localmente para testes)
+# Dataset (caso seja copiado ou baixado localmente para testes)
 command_voice_tcc-export/
+_dataset_zip/
