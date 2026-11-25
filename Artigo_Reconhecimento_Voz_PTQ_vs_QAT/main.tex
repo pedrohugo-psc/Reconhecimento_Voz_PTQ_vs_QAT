@@ -1,0 +1,63 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+% Codificacao e idioma (Portugues Brasileiro)
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+
+% Pacotes padrao IEEE e matematicos
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+
+% Diretorio padrao de figuras
+\graphicspath{{figuras/}}
+
+% Caso queira os rotulos em portugues, descomente as linhas abaixo:
+% \renewcommand{\abstractname}{Resumo}
+% \renewcommand{\IEEEkeywordsname}{Palavras-chave}
+
+\begin{document}
+
+\title{Comparação entre Post-Training Quantization e Quantization-Aware Training de 8 a 2 Bits no Reconhecimento de Palavras-Chave}
+
+\author{\IEEEauthorblockN{Pedro Hugo Passos da Silva Carlos}
+\IEEEauthorblockA{\textit{Departamento de Engenharia Elétrica e de Computação} \\
+\textit{Programa de Pós-Graduação em Engenharia Elétrica e Computação (PPGEEC)} \\
+\textit{Universidade Federal da Bahia (UFBA)} \\
+Salvador, Bahia, Brasil \\
+pedrohugo.psc@gmail.com}
+% Caso deseje adicionar coautor(es) ou orientador, basta usar \and seguido de outro \IEEEauthorblockN{...}
+}
+
+\maketitle
+
+\begin{abstract}
+% TODO: Redigir o resumo final apos concluir os resultados e conclusoes (nao usar simbolos, notas de rodape ou formulas matematicas no abstract).
+Este artigo apresenta uma comparação sistemática entre as técnicas \textit{Post-Training Quantization} (PTQ) e \textit{Quantization-Aware Training} (QAT), incluindo precisões \textit{sub-8-bit} (4 e 2 bits), aplicadas ao reconhecimento de palavras-chave (\textit{keyword spotting}). Tomando como referência o \textit{pipeline} embarcado no ESP32-S3 via Edge Impulse, o modelo 1D-CNN com entrada MFCC é reproduzido em PyTorch sob quantização simulada para isolar o efeito das estratégias PTQ (\textit{Min-Max} e \textit{MSE}) e QAT (Padrão, LSQ, LSQ+ e LSQ+ Híbrido).
+\end{abstract}
+
+\begin{IEEEkeywords}
+Keyword Spotting, TinyML, Quantização, PTQ, QAT, LSQ, Sub-8-Bit.
+\end{IEEEkeywords}
+
+% Secoes do artigo (edite cada arquivo dentro da pasta secoes/)
+\input{secoes/01_introducao}
+\input{secoes/02_fundamentacao}
+\input{secoes/03_metodologia}
+\input{secoes/04_resultados}
+\input{secoes/05_conclusoes}
+
+\bibliographystyle{IEEEtran}
+\bibliography{referencias}
+
+\end{document}

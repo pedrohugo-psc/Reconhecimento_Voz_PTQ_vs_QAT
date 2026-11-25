@@ -17,4 +17,5 @@ Thumbs.db
 
 # Dataset (caso seja copiado ou baixado localmente para testes)
 command_voice_tcc-export/
+command_voice_tcc-export.zip
 _dataset_zip/

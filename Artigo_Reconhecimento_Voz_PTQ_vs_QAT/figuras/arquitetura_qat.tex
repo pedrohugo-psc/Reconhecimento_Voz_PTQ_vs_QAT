@@ -1,0 +1,68 @@
+\begin{tikzpicture}[
+    font=\scriptsize,
+    >=Stealth,
+    node distance=0.24cm and 0.35cm,
+    layer/.style={
+        rectangle, rounded corners=2pt, draw=black!75, fill=gray!8,
+        minimum width=3.9cm, minimum height=0.44cm, align=center, inner sep=2pt
+    },
+    quant/.style={
+        rectangle, rounded corners=2pt, draw=blue!70!black, fill=blue!10,
+        thick, minimum width=1.45cm, minimum height=0.40cm, align=center,
+        font=\scriptsize\bfseries, inner sep=2pt
+    },
+    weight/.style={
+        rectangle, rounded corners=2pt, draw=black!60, fill=white,
+        minimum width=1.15cm, minimum height=0.40cm, align=center, inner sep=2pt
+    },
+    io/.style={
+        rectangle, rounded corners=2pt, draw=black!80, fill=gray!18,
+        minimum width=3.9cm, minimum height=0.44cm, align=center,
+        font=\scriptsize\bfseries, inner sep=2pt
+    }
+]
+
+% Fluxo principal (coluna esquerda)
+\node[io]    (inp)   {Entrada MFCC $(13, 50)$};
+\node[quant, below=of inp, minimum width=2.4cm] (qin) {Quantizador \texttt{in}};
+\node[layer, below=of qin]  (conv1) {\texttt{Conv1d} ($13 \to 8$, $k=3$) + \texttt{ReLU}};
+\node[quant, below=of conv1, minimum width=2.4cm] (qa1) {Quantizador \texttt{a1}};
+\node[layer, below=of qa1]  (pool1) {\texttt{MaxPool1d} ($k=2$) + \texttt{Dropout} ($0{,}25$)};
+\node[layer, below=of pool1] (conv2) {\texttt{Conv1d} ($8 \to 16$, $k=3$) + \texttt{ReLU}};
+\node[quant, below=of conv2, minimum width=2.4cm] (qa2) {Quantizador \texttt{a2}};
+\node[layer, below=of qa2]  (pool2) {\texttt{MaxPool1d} ($k=2$) + \texttt{Dropout} ($0{,}25$)};
+\node[layer, below=of pool2] (flat)  {\texttt{Flatten} ($208$)};
+\node[layer, below=of flat]  (fc)    {\texttt{Linear} ($208 \to 6$)};
+\node[io,    below=of fc]    (out)   {Saída / \textit{Logits} (6 classes)};
+
+% Ramos laterais de pesos
+\node[quant, right=0.45cm of conv1] (qw1)  {Quant. \texttt{w1}};
+\node[weight, right=0.30cm of qw1]  (w1)   {Pesos $w_1$};
+
+\node[quant, right=0.45cm of conv2] (qw2)  {Quant. \texttt{w2}};
+\node[weight, right=0.30cm of qw2]  (w2)   {Pesos $w_2$};
+
+\node[quant, right=0.45cm of fc]    (qwfc) {Quant. \texttt{wfc}};
+\node[weight, right=0.30cm of qwfc] (wfc)  {Pesos $w_{fc}$};
+
+% Conexoes principais
+\draw[->] (inp)   -- (qin);
+\draw[->] (qin)   -- (conv1);
+\draw[->] (conv1) -- (qa1);
+\draw[->] (qa1)   -- (pool1);
+\draw[->] (pool1) -- (conv2);
+\draw[->] (conv2) -- (qa2);
+\draw[->] (qa2)   -- (pool2);
+\draw[->] (pool2) -- (flat);
+\draw[->] (flat)  -- (fc);
+\draw[->] (fc)    -- (out);
+
+% Conexoes dos pesos
+\draw[->] (w1)   -- (qw1);
+\draw[->] (qw1)  -- (conv1);
+\draw[->] (w2)   -- (qw2);
+\draw[->] (qw2)  -- (conv2);
+\draw[->] (wfc)  -- (qwfc);
+\draw[->] (qwfc) -- (fc);
+
+\end{tikzpicture}

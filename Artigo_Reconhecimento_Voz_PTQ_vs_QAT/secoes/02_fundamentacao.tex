@@ -1,0 +1,144 @@
+\section{Fundamentação Teórica}
+
+Em redes neurais, os pesos e as ativações são convencionalmente treinados em ponto flutuante de 32~bits. Assim, ao converter esses parâmetros de 32~bits para representações inteiras
+de baixa precisão (8, 4 e 2~bits), tanto o uso de memória quanto o custo computacional das multiplicações matriciais diminuem consideravelmente, permitindo que o \textit{hardware}   
+execute essas operações com maior eficiência~\cite{nagel2021}.
+
+\subsection{Quantização Linear Uniforme}
+
+Nesse contexto, os métodos de quantização podem ser categorizados em não-lineares e lineares. Embora a abordagem não-linear apresente bons resultados em baixas larguras de bits, ela
+exige conversões adicionais para mapear os valores quantizados, como o uso de uma tabela de consulta (\textit{look-up table}). Por isso, adota-se geralmente a quantização linear, por
+dispensar essas etapas extras e ser mais adequada à implementação em \textit{hardware}. Essa abordagem subdivide-se em quantização simétrica e assimétrica~\cite{lin2023}.
+
+A quantização simétrica é definida a seguir~\cite{bhalgat2020,nagel2021}:
+\begin{align}
+\bar{x} &= \operatorname{clamp}\!\left(\left\lfloor \frac{x}{s} \right\rceil,\, n,\, p\right), \label{eq:quant_sim_q} \\
+\hat{x} &= \bar{x} \cdot s, \label{eq:quant_sim_dq}
+\end{align}
+em que $x$ representa o valor real de entrada (peso ou ativação), $s > 0$ é o fator de escala (passo de quantização), $\lfloor \cdot \rceil$ denota o arredondamento para o inteiro mais próximo, $\bar{x}$ é a representação inteira quantizada e $\hat{x}$ é o valor reconstruído (desquantizado). A função $\operatorname{clamp}(\cdot,\, n,\, p)$ satura os níveis no intervalo inteiro de $b$~bits: $[0,\, 2^{b}-1]$ para valores sem sinal (\textit{unsigned}, como ativações pós-ReLU) e $[-2^{b-1},\, 2^{b-1}-1]$ para valores com sinal (\textit{signed}, como pesos)~\cite{bhalgat2020,nagel2021}.
+
+Quando pesos ou ativações apresentam distribuições assimétricas ou não centradas em zero, adota-se a quantização assimétrica (ou uniforme afim), que introduz um parâmetro de deslocamento (\textit{offset}) $\beta$ para ajustar melhor a grade discreta à faixa real de valores~\cite{bhalgat2020,nagel2021}:
+\begin{align}
+\bar{x} &= \operatorname{clamp}\!\left(\left\lfloor \frac{x - \beta}{s} \right\rceil,\, n,\, p\right), \label{eq:quant_assim_q} \\
+\hat{x} &= \bar{x} \cdot s + \beta. \label{eq:quant_assim_dq}
+\end{align}
+Nessas equações, $\beta$ desloca o intervalo de quantização para cobrir apenas a região onde os dados realmente variam, evitando desperdiçar níveis discretos~\cite{bhalgat2020} --- formulação equivalente à do ponto zero inteiro (\textit{zero-point}) $z$ adotada por Nagel et al.~\cite{nagel2021}, com $\beta = -s \cdot z$. Assim, a quantização assimétrica aproveita melhor os $2^b$ níveis disponíveis em distribuições deslocadas do zero, mas exige operações extras de soma e subtração na inferência para compensar $\beta$, ao contrário do caso simétrico ($\beta = 0$)~\cite{lin2023,nagel2021}.
+
+Em ambas as abordagens, os limites inteiros $[n,\, p]$ correspondem no domínio real aos limiares de corte $[q_{\min},\, q_{\max}]$, dados por $q_{\min} = n\cdot s + \beta$ e $q_{\max} = p\cdot s + \beta$. A escolha de $s$ envolve um equilíbrio entre dois tipos de erro: valores que ultrapassam $[q_{\min},\, q_{\max}]$ são cortados (erro de \textit{clipping}), enquanto os valores internos sofrem erro de arredondamento (de no máximo $s/2$). Aumentar $s$ amplia o alcance $[q_{\min},\, q_{\max}]$ e reduz os cortes, porém aumenta o espaçamento entre os níveis e, consequentemente, o erro de arredondamento~\cite{nagel2021}.
+
+\subsection{Post-Training Quantization (PTQ): Min-Max e MSE}
+
+Os algoritmos de \textit{Post-Training Quantization} (PTQ) partem de uma rede neural já treinada em ponto flutuante (FP32) e a convertem diretamente para ponto fixo,
+sem exigir o retreinamento do modelo. Por dispensarem o ajuste complexo de hiperparâmetros e operarem com poucos ou nenhum dado adicional, os métodos de PTQ são computacionalmente eficientes e fáceis de aplicar. Contudo, para preservar o desempenho do modelo, é necessário definir     
+adequadamente os intervalos de quantização de cada ponto da rede~\cite{nagel2021}.
+
+A definição do intervalo de quantização consiste em estabelecer os limiares reais de corte, $q_{\min}$ e $q_{\max}$, que determinam o fator de escala $s$:
+\begin{equation}
+s = \frac{q_{\max} - q_{\min}}{p - n},
+\label{eq:escala_s}
+\end{equation}
+Essa escolha busca equilibrar o erro de saturação (\textit{clipping}) e o erro de arredondamento, idealmente visando minimizar o impacto sobre a função de perda da tarefa. Entretanto, 
+como o PTQ evita o treinamento ponta a ponta (\textit{end-to-end}), os métodos de calibração substituem a perda global da tarefa pela otimização de funções de custo locais para cada quantizador,      
+garantindo rapidez computacional~\cite{nagel2021}. Entre os critérios mais comuns destacam-se o \textit{Min-Max} e a minimização do \textit{Mean Squared Error} (MSE), descritos a     
+seguir.
+
+O critério \textit{Min-Max} tem como objetivo cobrir toda a faixa dinâmica dos valores (pesos ou ativações). Assim, os limiares reais de quantização são definidos da seguinte         
+maneira~\cite{nagel2021}:
+\begin{align}
+q_{\min} &= \min V, \label{eq:ptq_minmax_min} \\
+q_{\max} &= \max V, \label{eq:ptq_minmax_max}
+\end{align}
+em que $V$ denota o conjunto de valores (pesos ou ativações) a ser quantizado. Essa abordagem elimina o erro de corte (\textit{clipping}). Todavia, torna-se sensível a valores        
+extremos (\textit{outliers}), pois um único valor distante amplia o intervalo $[q_{\min},\, q_{\max}]$, aumentando o passo $s$ e causando erro excessivo de arredondamento nos valores 
+comuns~\cite{nagel2021}.
+
+Já o critério MSE busca aliviar o impacto dos \textit{outliers} para atenuar o erro de arredondamento~\cite{nagel2021}. Para isso, determinam-se os limiares $q_{\min}$ e $q_{\max}$
+que minimizam o erro quadrático médio entre os conjuntos de valores (pesos ou ativações) originais e quantizados:                                                                      
+\begin{equation}
+\arg\min_{q_{\min},\, q_{\max}} \left\| V - \hat{V}(q_{\min},\, q_{\max}) \right\|_F^2,
+\label{eq:ptq_mse}
+\end{equation}    
+em que $\hat{V}(q_{\min},\, q_{\max})$ denota a versão quantizada de $V$ e $\|\cdot\|_F$ representa a norma de Frobenius. Desse modo, busca-se um intervalo que represente melhor a
+maioria dos valores, equilibrando o erro de saturação (\textit{clipping}) e o erro de arredondamento~\cite{nagel2021}. Esse problema de otimização é comumente resolvido por métodos de
+busca numérica, como a busca em grade (\textit{grid search})~\cite{nagel2021}.
+
+\subsection{Quantization-Aware Training (QAT): STE, LSQ e LSQ+}
+
+A técnica de PTQ, por não envolver o retreinamento da rede, apresenta bom desempenho em quantizações de 8~bits; todavia, ao reduzir a precisão para 4 ou 2~bits, sua acurácia tende a
+cair acentuadamente~\cite{bhalgat2020,nagel2021}. Para esses casos, emprega-se o \textit{Quantization-Aware Training} (QAT), no qual pesos e ativações são quantizados de forma      
+simulada (\textit{fake quantization}) durante o treinamento: na passagem \textit{forward}, os valores em ponto flutuante são projetados para os níveis discretos correspondentes       
+($\hat{x}$), enquanto todos os cálculos e a etapa de \textit{backward} permanecem em ponto flutuante~\cite{nagel2021,pereira2023}. Dessa forma, os pesos são ajustados levando em 
+consideração o erro de quantização inserido na função de perda, tornando o modelo mais resiliente e permitindo encontrar melhores soluções que o PTQ~\cite{nagel2021,pereira2023}.
+
+Entretanto, durante o \textit{backpropagation}, é necessário calcular o gradiente da operação de arredondamento para o inteiro mais próximo ($\lfloor \cdot \rceil$), cuja derivada é  
+nula quase em toda parte ou indefinida nos pontos de transição, o que inviabilizaria o treinamento baseado em gradiente~\cite{lin2023,nagel2021}. Para contornar essa limitação,
+utiliza-se o \textit{Straight-Through Estimator} (STE), que aproxima a derivada do arredondamento por $1$ ($\partial \lfloor y \rceil / \partial y \approx 1$). Considerando a
+saturação nos limiares $[q_{\min},\, q_{\max}]$, o gradiente do bloco quantizador em relação à sua entrada $x$ é dado por~\cite{nagel2021}:
+\begin{equation} 
+\frac{\partial \hat{x}}{\partial x} \approx
+\begin{cases} 
+1, & \text{se } q_{\min} \le x \le q_{\max}, \\ 
+0, & \text{caso contrário.}
+\end{cases}
+\label{eq:ste} 
+\end{equation}
+
+Inicialmente, no QAT convencional, apenas os pesos e as ativações da rede eram ajustados por gradiente, enquanto os intervalos de quantização permaneciam fixos ou eram atualizados apenas por       
+estatísticas, como \textit{Min-Max}. Contudo, as abordagens posteriores passaram a empregar o STE para otimizar também os parâmetros da quantização, $s$ e $\beta$, durante o           
+treinamento~\cite{bhalgat2020,nagel2021}.
+
+Para otimizar o fator de escala $s$ tanto nos pesos quanto nas ativações, surgiu o \textit{Learned Step Size Quantization} (LSQ), que adota a quantização simétrica ($\beta = 0$)      
+definida em~\eqref{eq:quant_sim_q} e~\eqref{eq:quant_sim_dq}, porém tratando $s$ como um parâmetro treinável~\cite{bhalgat2020}. Dessa forma, durante o \textit{backpropagation}, o    
+gradiente do quantizador em relação ao passo $s$ também é calculado via STE~\cite{bhalgat2020,nagel2021}:                                                                              
+\begin{equation}                                                                                                                                                                       
+\frac{\partial \hat{x}}{\partial s} \approx                                                                                                                                            
+\begin{cases}                                                                                                                                                                          
+-\dfrac{x}{s} + \left\lfloor \dfrac{x}{s} \right\rceil, & \text{se } q_{\min} \le x \le q_{\max}, \\                                                                                   
+n, & \text{se } x < q_{\min}, \\                                                                                                                                                       
+p, & \text{se } x > q_{\max}.                                                                                                                                                          
+\end{cases}                                                                                                                                                                            
+\label{eq:grad_lsq_s}                                                                                                                                                                  
+\end{equation}                                                                                                                                                                         
+Todavia, por adotar quantização simétrica, o LSQ perde eficiência quando os valores, especialmente ativações ou entradas, possuem distribuição assimétrica em torno de zero. Caso escolha um intervalo de quantização sem sinal, descartam-se os valores negativos, por outro lado escolher um intervalo com sinal divide os níveis igualmente entre os lados negativo e positivo,
+desperdiçando resolução~\cite{bhalgat2020}. 
+
+Para superar essa limitação, foi proposto o \textit{Learned Step Size Quantization Plus} (LSQ+), que adota a quantização assimétrica definida em~\eqref{eq:quant_assim_q}
+e~\eqref{eq:quant_assim_dq}. Nesse método, além de treinar os pesos e o fator de escala $s$, ajusta-se também o parâmetro de deslocamento $\beta$ para lidar com distribuições         
+assimétricas~\cite{bhalgat2020}. Com a inclusão de $\beta$, os gradientes em relação a $s$ e $\beta$ são obtidos via STE da seguinte forma~\cite{bhalgat2020}:
+\begin{equation}
+\frac{\partial \hat{x}}{\partial s} \approx
+\begin{cases}
+-\dfrac{x - \beta}{s} + \left\lfloor \dfrac{x - \beta}{s} \right\rceil, & \text{se } q_{\min} < x < q_{\max}, \\
+n, & \text{se } x \le q_{\min}, \\
+p, & \text{se } x > q_{\max},
+\end{cases}
+\label{eq:grad_lsqplus_s}
+\end{equation}
+\begin{equation}
+\frac{\partial \hat{x}}{\partial \beta} \approx
+\begin{cases}
+0, & \text{se } q_{\min} < x < q_{\max}, \\
+1, & \text{caso contrário.}
+\end{cases}
+\label{eq:grad_lsqplus_beta}
+\end{equation}
+Em ambos os casos, o STE é empregado para aproximar $\partial \bar{x}/\partial s$ e $\partial \bar{x}/\partial \beta$. Já para os pesos, mantém-se a quantização simétrica ($\beta =   
+0$), pois observa-se que eles costumam se distribuir simetricamente em torno de zero. Com isso, a quantização assimétrica das ativações não gera custo computacional adicional na      
+inferência, uma vez que o termo de deslocamento pode ser pré-calculado e incorporado ao viés (\textit{bias}) da camada~\cite{bhalgat2020}. Por fim, para reduzir a sensibilidade à     
+inicialização e o impacto de \textit{outliers} em baixas precisões, os parâmetros iniciais $(s_{\text{init}},\, \beta_{\text{init}})$ são determinados pela minimização do             
+MSE~\cite{bhalgat2020}.
+
+\subsection{Formulação sob a Perspectiva de Otimização: LSQ+ Híbrido}
+
+Ao utilizar a função de ativação \textit{Rectified Linear Unit} (ReLU), os valores de saída tornam-se positivos ou nulos, pois todas as entradas negativas são mapeadas 
+para zero. Como no LSQ+ a inicialização por MSE e a atualização via STE operam de forma irrestrita sobre $s$ e $\beta$, o otimizador pode deslocar $\beta$ para fora da origem a fim de
+reduzir o erro médio no restante do intervalo. Consequentemente, com $n = 0$, o limite inferior real $q_{\min} = \beta$ deixa de coincidir com zero~\cite{bhalgat2020}. Desse modo, o
+valor real $0$ passa a ser representado com erro após a quantização, injetando um viés constante nos neurônios inativos~\cite{nagel2021} e criando um acoplamento mal-condicionado   
+entre $s$ e $\beta$ durante o treinamento~\cite{antoniou2007,souza2026}.
+
+Para evitar esse erro na ativação ReLU, pode-se formular o LSQ+ como um problema de otimização com restrições, garantindo que o parâmetro de deslocamento não viole a região viável,
+isto é, impondo a restrição ativa $\beta = 0$~\cite{antoniou2007,souza2026}. Uma forma clássica de manter as iterações dentro do conjunto viável é o método de Projeção de Gradiente,  
+que projeta a direção de busca sobre o hiperplano definido pelas restrições linearmente ativas~\cite{souza2026}. Nesse caso, como a restrição de fronteira exige $\beta = 0$ nas       
+ativações pós-ReLU, a projeção mantém esse deslocamento nulo durante todo o treinamento enquanto os pesos e o fator de escala $s$ seguem sendo atualizados livremente.           
+Ao mesmo tempo, mantém-se $\beta$ livre apenas onde existem valores negativos e positivos assimétricos, como na entrada normalizada do modelo, originando a variante LSQ+ Híbrido       
+avaliada neste trabalho.

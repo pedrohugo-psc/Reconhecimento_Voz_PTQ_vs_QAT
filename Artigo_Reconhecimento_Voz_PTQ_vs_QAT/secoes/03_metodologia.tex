@@ -1,0 +1,81 @@
+\section{Metodologia}
+
+Conforme apresentado na introdução, este estudo toma como referência o trabalho ``Sistema Embarcado para Reconhecimento de Palavras usando ESP32-S3 e TinyML''~\cite{carlos2025}.      
+Todavia, em vez da plataforma Edge Impulse, utilizou-se o PyTorch, mantendo rigorosamente o mesmo conjunto de dados e as mesmas configurações de pré-processamento, arquitetura e      
+treinamento adotadas na plataforma original.
+
+\subsection{Conjunto de Dados e Extração de Características (MFCC)}
+
+O conjunto de dados totaliza 1.302~áudios, sendo 1.050 destinados ao desenvolvimento do modelo e 252 mantidos isolados para teste. Cada áudio foi rotulado em uma de seis classes      
+(\textit{zero}, \textit{um}, \textit{dois}, \textit{três}, \textit{ruído} e \textit{desconhecido}) e padronizado temporalmente em 16~kHz com duração de 1~segundo (16.000~amostras),   
+aplicando-se corte ou preenchimento com zeros (\textit{zero-padding}). Durante a etapa de desenvolvimento, as 1.050~amostras foram divididas em 80\% para treinamento (840~amostras) e 
+20\% para validação (210~amostras)~\cite{carlos2025}.
+
+Para extrair as características acústicas utilizadas no reconhecimento de voz, empregaram-se os Coeficientes Mel-Cepstrais (MFCC), técnica que modela a resposta não linear da audição 
+humana --- mais sensível às baixas frequências do que às altas ---, seguida de normalização cepstral por média e variância (CMVN)~\cite{carlos2025,pereira2023}. Os parâmetros adotados
+reproduzem integralmente a configuração do Edge Impulse e estão resumidos na Tabela~\ref{tab:mfcc}.
+
+\begin{table}[htbp]
+\centering
+\caption{Parâmetros de extração MFCC e normalização CMVN.}
+\label{tab:mfcc}
+\begin{tabular}{lc} 
+\toprule
+\textbf{Parâmetro} & \textbf{Valor} \\ 
+\midrule
+Coeficientes cepstrais (MFCC) & 13 \\ 
+Comprimento e passo do quadro & 20~ms (320 amostras) \\
+Número de filtros Mel & 32 \\
+Tamanho da FFT & 512~pontos \\
+Frequência mínima & 10~Hz \\
+Coeficiente de pré-ênfase & 0,98 \\
+Janela de normalização CMVN & 101~quadros \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Ao final do pré-processamento, cada áudio gera uma matriz de entrada de dimensões $(13, 50)$, correspondendo a 13~coeficientes ao longo de 50~quadros temporais. No conjunto de
+treinamento, os valores normalizados apresentaram média $-0{,}000$, desvio padrão $0{,}999$ e extremos assimétricos entre $-6{,}362$ e $+5{,}051$.
+
+\subsection{Arquitetura da Rede Neural (1D-CNN)}
+
+A rede neural convolucional unidimensional (1D-CNN) adotada neste trabalho reproduz a arquitetura empregada no Edge Impulse~\cite{carlos2025}, totalizando 1.974~parâmetros treináveis
+distribuídos conforme detalhado na Tabela~\ref{tab:arquitetura}.                                                                                                                       
+
+\begin{table}[htbp]
+\centering
+\setlength{\tabcolsep}{3.5pt}
+\caption{Arquitetura da rede 1D-CNN (\textit{KWS\_CNN}) e número de parâmetros.}
+\label{tab:arquitetura}
+\begin{tabular}{lcc}   
+\toprule            
+\textbf{Camada} & \textbf{Saída} & \textbf{Parâmetros} \\
+\midrule
+Entrada MFCC & $(13, 50)$ & --- \\
+\texttt{Conv1d} ($13 \to 8$, $k=3$, $p=1$) + ReLU & $(8, 50)$ & 320 \\
+\texttt{MaxPool1d} ($k=2$, \textit{ceil}) + \texttt{Dropout} ($0{,}25$) & $(8, 25)$ & --- \\
+\texttt{Conv1d} ($8 \to 16$, $k=3$, $p=1$) + ReLU & $(16, 25)$ & 400 \\
+\texttt{MaxPool1d} ($k=2$, \textit{ceil}) + \texttt{Dropout} ($0{,}25$) & $(16, 13)$ & --- \\
+\texttt{Flatten} + \texttt{Linear} ($208 \to 6$) & $(6)$ & 1.254 \\
+\midrule
+\textbf{Total} & --- & \textbf{1.974} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\columnwidth}{!}{\input{figuras/arquitetura_qat}}
+\caption{Arquitetura \textit{KWS\_CNN} com os seis pontos de quantização simulada (\texttt{in}, \texttt{w1}, \texttt{a1}, \texttt{w2}, \texttt{a2} e \texttt{wfc}); os vieses (\textit{biases}) permanecem em FP32.}
+\label{fig:arquitetura}
+\end{figure}
+
+Para avaliar as estratégias de quantização, a quantização simulada foi inserida em seis pontos da rede: na entrada MFCC (\texttt{in}), nos pesos das camadas convolucionais e da camada
+densa (\texttt{w1}, \texttt{w2} e \texttt{wfc}) e nas ativações pós-ReLU (\texttt{a1} e \texttt{a2}), conforme ilustrado na Figura~\ref{fig:arquitetura}. A entrada \texttt{in} utiliza
+representação com sinal e simétrica ($\beta = 0$) no PTQ, QAT Padrão e LSQ, passando para representação sem sinal com $\beta$ treinável no LSQ+ e no LSQ+ Híbrido. Os pesos    
+(\texttt{w1}, \texttt{w2} e \texttt{wfc}) mantêm quantização com sinal e simétrica ($\beta = 0$) em todas as técnicas. Já as ativações pós-ReLU (\texttt{a1} e \texttt{a2}) adotam 
+representação sem sinal em todos os métodos, mantendo $\beta = 0$ no PTQ, QAT Padrão, LSQ e LSQ+ Híbrido, e com $\beta$ treinável apenas no LSQ+ padrão. Os vieses (\textit{biases}) 
+das camadas permanecem em ponto flutuante (FP32)~\cite{nagel2021}.
+
+\subsection{Protocolo Experimental e Métricas de Avaliação}
+% Treinamento baseline FP32 (300 epocas, Adam, lr=0,005), fine-tuning QAT (100 epocas, Adam, lr=1e-3, CosineAnnealingLR, seed 42), precisoes W8A8, W4A4 e W2A2, e metricas (Acuracia, Loss, ROC AUC e F1-Score ponderado).
